@@ -1,4 +1,4 @@
-function [f, d] = d_lowe_sift(I, cache_path)
+function [f, d] = d_ubc_sift(I, cache_path)
 global dcv_root
 
 if ismatrix(I)
