@@ -1,91 +1,89 @@
-#include <err.h>
 #include <unistd.h>
 
 #include "visca.h"
 
 int fd;
-struct visca_packet pack;
-struct visca_packet *p = &pack;
+struct visca_interface iface =VISCA_IF_INIT;
+struct visca_interface *pif = &iface;
+
 #define SLEEP_INTERVAL 1
 
 char *dev_name = "/dev/ttyS0";
 
-void test_zoom() 
-{	
-	visca_zoom_wide(fd, p);
+void test_zoom()
+{
+	visca_zoom_wide(pif);
 	sleep(5);
-	visca_zoom_tele(fd, p);
+	visca_zoom_tele(pif);
 	sleep(3);
-	visca_zoom_stop(fd, p);
-	visca_zoom_wide(fd, p);
+	visca_zoom_stop(pif);
+	visca_zoom_wide(pif);
 	sleep(5);
 	
-	visca_zoom_tele_speed(fd, p, 0);
+	visca_zoom_tele_speed(pif, 0);
 	sleep(5);
-	visca_zoom_wide_speed(fd, p, 7);
-	sleep(5);	
+	visca_zoom_wide_speed(pif, 7);
+	sleep(5);
 }
 
-void test_check_para()
+void test_check_arg()
 {
-	visca_zoom_wide_speed(fd, p, 20000);
-	visca_zoom_direct(fd, p, 20000);
-	visca_pantilt_dir(fd, p, 100, 23, 1);
-	visca_pantilt_absolute_pos(fd, p, 5, 5, -400, -500);
+	visca_zoom_wide_speed(pif, 20000);
+	visca_zoom_direct(pif, 20000);
+	visca_pantilt_dir(pif, 100, 23, 1);
+	visca_pantilt_absolute_pos(pif, 5, 5, -400, -500);
 }
 
 void test_pantilt()
 {
-	visca_pantilt_dir(fd, p, 24, 23, VISCA_PT_UP);
+	visca_pantilt_dir(pif, 24, 23, VISCA_PT_UP);
 	sleep(SLEEP_INTERVAL);
-	visca_pantilt_stop(fd, p);
+	visca_pantilt_stop(pif);
 
-	visca_pantilt_dir(fd, p, 5, 5, VISCA_PT_DOWN);
+	visca_pantilt_dir(pif, 5, 5, VISCA_PT_DOWN);
 	sleep(SLEEP_INTERVAL);
-	visca_pantilt_stop(fd, p);
+	visca_pantilt_stop(pif);
 
-	visca_pantilt_absolute_pos(fd, p, 5, 5, -200, -200);
-	visca_pantilt_stop(fd, p);
+	visca_pantilt_absolute_pos(pif, 5, 5, -200, -200);
+	visca_pantilt_stop(pif);
 	sleep(SLEEP_INTERVAL);
-	visca_pantilt_relative_pos(fd, p, 5, 5, 0, -200);
+	visca_pantilt_relative_pos(pif, 5, 5, 0, -200);
 	sleep(SLEEP_INTERVAL);
-	visca_pantilt_home(fd, p);
+	visca_pantilt_home(pif);
 	sleep(SLEEP_INTERVAL);
-	visca_pantilt_relative_pos(fd, p, 5, 5, 0, 200);
+	visca_pantilt_relative_pos(pif, 5, 5, 0, 200);
 	sleep(SLEEP_INTERVAL);
-	visca_pantilt_reset(fd, p);
+	visca_pantilt_reset(pif);
 	sleep(SLEEP_INTERVAL);
 }
 
-void test_inq() 
+void test_inq()
 {
-	struct visca_version ver;
+	int vendor, model, rom_version;
 	int zoom_val;
-	visca_zoom_direct(fd, p, 200);
+	visca_zoom_direct(pif, 200);
 	sleep(SLEEP_INTERVAL);
-	visca_inq_zoom_pos(fd, p, &zoom_val);
-	warnx("zoom inquired is %d\n", zoom_val);
+	visca_inq_zoom_pos(pif, &zoom_val);
+	pr_warn("zoom inquired is %d\n", zoom_val);
 	
-	visca_inq_version(fd, p, &ver);
+	visca_inq_version(pif, &vendor, &model, &rom_version);
 
-	debug("vendor: 0x%04x\nmodel: 0x%04x\nrom version 0x%04x\n", ver.vendor, ver.model, ver.rom_version);
+	dbg("vendor: 0x%04x\nmodel: 0x%04x\nrom version 0x%04x\n", vendor, model, rom_version);
 }
 
 int main(int argc, char **argv)
 {
-/* struct visca_camera_info cam_info; */
-/* just example ignore error handling for simplicity*/
-	fd = visca_open_serial(dev_name);
-	visca_set_address(fd, p);
-	visca_clear_if(fd, p);
+	/* struct visca_camera_info cam_info; */
+	/* just example ignore error handling for simplicity*/
+	visca_open_serial(pif, dev_name);
+	visca_set_address(pif);
+	visca_clear_if(pif);
 
-/* test_zoom(fd, &pack); */
-/* test_check_para(fd, &pack); */
-	/* test_pantilt(fd, &pack); */
+	test_zoom();
+	test_check_arg();
+	test_pantilt();
 	test_inq();
-/* visca_inq_version(fd, cam_addr, &cam_info); */
-/* warn("Some camera info:\n-------------------\n"); */
 
-	visca_close_serial(fd);
+	visca_close_serial(pif);
 	return 0;
 }
