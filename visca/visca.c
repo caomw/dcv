@@ -63,12 +63,12 @@ static inline void dbg_pack(const byte_t *buf, int dir)
 	
 	BUG_ON(dir != DIR_SEND && dir != DIR_RECV);
 	if (dir == DIR_SEND)
-		__dbg("S");
+		dbg("S");
 	else
-		__dbg("R");
+		dbg("R");
 	for (i = 0; i < VISCA_IF_BUF_SIZE && buf[i] != TERMINATOR; i++)
-		__dbg(" %02x", buf[i]);
-	__dbg("\n");	
+		dbg(" %02x", buf[i]);
+	dbg("\n");	
 }
 #else
 static inline void dbg_pack(const byte_t *buf, int dir) {}
@@ -460,7 +460,7 @@ static int send_with_reply(int fd, const byte_t *send_buf, int send_count, byte_
 		if ((error = recv_packet(fd, recv_buf, recv_count)))
 			return error;
 		if (!PACKET_IS_BROADCAST(recv_buf)) {
-			dbg("'broadcast 0x88' expect 'broadcast 0x88' reply\n");
+			pr_warn("'broadcast 0x88' expect 'broadcast 0x88' reply\n");
 			return -1;
 		}
 		return 0;
@@ -475,7 +475,7 @@ static int send_with_reply(int fd, const byte_t *send_buf, int send_count, byte_
 		} while(PACKET_TYPE(recv_buf) == BYTE_ACK);
 		
 		if (PACKET_TYPE(recv_buf) != BYTE_COMPLETION) {
-			dbg("'command' expect 'completion' reply\n");
+			pr_warn("'command' expect 'completion' reply\n");
 			return -1;
 		}
 		break;
@@ -483,7 +483,7 @@ static int send_with_reply(int fd, const byte_t *send_buf, int send_count, byte_
 		if ((error = recv_packet(fd, recv_buf, recv_count)))
 			return error;
 		if (PACKET_TYPE(recv_buf) != BYTE_COMPLETION) {
-			dbg("'inquiry' expect one 'completion' reply\n");
+			pr_warn("'inquiry' expect one 'completion' reply\n");
 			return -1;
 		}
 		break;

@@ -10,11 +10,12 @@
 #define ARRAY_SIZE(x) (sizeof((x))/sizeof((x)[0]))
 
 #ifdef DEBUG
-#define dbg(fmt, ...) do { fprintf(stderr, "%s,%d: "fmt, __FILE__, __LINE__, ##__VA_ARGS__); } while (0)
-#define __dbg(fmt, ...)do { fprintf(stderr, fmt, ##__VA_ARGS__); } while(0)
+/* debug with line position*/
+#define dbgl(fmt, ...) do { fprintf(stderr, "%s,%d: "fmt, __FILE__, __LINE__, ##__VA_ARGS__); } while (0)
+#define dbg(fmt, ...)do { fprintf(stderr, fmt, ##__VA_ARGS__); } while(0)
 #else
+#define dbgl
 #define dbg
-#define __dbg
 #endif
 
 #define __pr(level, fmt, ...) do { fprintf(stderr, level#fmt, ##__VA_ARGS__); } while(0)
@@ -172,18 +173,18 @@ int __visca_command(struct visca_interface *iface, int cmd_idx, int cam_addr, lo
 	}
 
 
-#define VISCA_DEF_CAM_ADDR 1
+#define VISCA_DEFAULT_CAM_ADDR 1
 
 #define VISCA_CMD0(name) \
 	inline int visca_##name(struct visca_interface *iface) \
 	{ \
-		return _visca_##name(iface, VISCA_DEF_CAM_ADDR);	\
+		return _visca_##name(iface, VISCA_DEFAULT_CAM_ADDR);	\
 	}
 
 #define VISCA_CMDx(x, name, ...)					\
 	inline int visca_##name(struct visca_interface *iface, __CMD_DECL##x(__VA_ARGS__)) \
 	{						\
-		return _visca_##name(iface, VISCA_DEF_CAM_ADDR, __CMD_CAST##x(__VA_ARGS__)); \
+		return _visca_##name(iface, VISCA_DEFAULT_CAM_ADDR, __CMD_CAST##x(__VA_ARGS__)); \
 	}
 
 #define VISCA_CMD1(name, ...) VISCA_CMDx(1, name, __VA_ARGS__)
@@ -200,31 +201,28 @@ int __visca_command(struct visca_interface *iface, int cmd_idx, int cam_addr, lo
 #define VISCA_INQ5(name, ...) VISCA_CMD5(inq_##name, __VA_ARGS__)
 #define VISCA_INQ6(name, ...) VISCA_CMD6(inq_##name, __VA_ARGS__)
 
-/* default visca api */
-#define DEF_VISCA_CMD0(name)  \
+#define VISCA_DEFINE_CMD0(name)  \
 	_VISCA_CMD0(name) \
 	VISCA_CMD0(name)
 
-#define DEF_VISCA_CMD1(name, ...) \
+#define VISCA_DEFINE_CMD1(name, ...) \
 	_VISCA_CMD1(name, __VA_ARGS__) \
 	VISCA_CMD1(name, __VA_ARGS__)
 
-#define DEF_VISCA_INQ1(name, ...) DEF_VISCA_CMD1(inq_##name, __VA_ARGS__)
+#define VISCA_DEFINE_INQ1(name, ...) VISCA_DEFINE_CMD1(inq_##name, __VA_ARGS__)
 
-DEF_VISCA_CMD0(set_address)
-DEF_VISCA_CMD0(clear_if)
-DEF_VISCA_CMD0(zoom_stop)
-DEF_VISCA_CMD0(zoom_tele)
-DEF_VISCA_CMD0(zoom_wide)
-DEF_VISCA_CMD0(pantilt_home)
-DEF_VISCA_CMD0(pantilt_reset)
-DEF_VISCA_CMD0(pantilt_stop)
+VISCA_DEFINE_CMD0(set_address)
+VISCA_DEFINE_CMD0(clear_if)
+VISCA_DEFINE_CMD0(zoom_stop)
+VISCA_DEFINE_CMD0(zoom_tele)
+VISCA_DEFINE_CMD0(zoom_wide)
+VISCA_DEFINE_CMD0(pantilt_home)
+VISCA_DEFINE_CMD0(pantilt_reset)
+VISCA_DEFINE_CMD0(pantilt_stop)
 
-_VISCA_CMD1(zoom_tele_speed, int, speed)
-VISCA_CMD1(zoom_tele_speed, int, speed)
-/* DEF_VISCA_CMD1(zoom_tele_speed, int, speed) */
-DEF_VISCA_CMD1(zoom_wide_speed, int, speed)
-DEF_VISCA_CMD1(zoom_direct, int, pos)
+VISCA_DEFINE_CMD1(zoom_tele_speed, int, speed)
+VISCA_DEFINE_CMD1(zoom_wide_speed, int, speed)
+VISCA_DEFINE_CMD1(zoom_direct, int, pos)
 
 struct visca_pantilt_dir {
 	int pan_speed;
@@ -274,7 +272,7 @@ _VISCA_DECL_CMD4(pantilt_relative_pos, int, pan_speed, int, tilt_speed, int, pan
 } 
 VISCA_CMD4(pantilt_relative_pos, int, pan_speed, int, tilt_speed, int, pan_pos, int, tilt_pos)
 
-DEF_VISCA_INQ1(zoom_pos, int*, pos)
+VISCA_DEFINE_INQ1(zoom_pos, int*, pos)
 
 struct visca_version {
 	int vendor;

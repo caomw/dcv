@@ -64,7 +64,7 @@ void test_inq()
 	visca_zoom_direct(pif, 200);
 	sleep(SLEEP_INTERVAL);
 	visca_inq_zoom_pos(pif, &zoom_val);
-	pr_warn("zoom inquired is %d\n", zoom_val);
+	dbg("zoom inquired is %d\n", zoom_val);
 	
 	visca_inq_version(pif, &vendor, &model, &rom_version);
 
