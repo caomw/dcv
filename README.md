@@ -1,4 +1,4 @@
-dlcv
+DCV
 ====
 
 daley's computer vison library
