@@ -8,6 +8,8 @@
 #include <err.h>
 
 #define ARRAY_SIZE(x) (sizeof((x))/sizeof((x)[0]))
+#define true		1
+#define false		0
 
 #define __pr(fmt, ...) do { \
 	fprintf(stderr, fmt, ##__VA_ARGS__); \
@@ -73,8 +75,6 @@
 #define VISCA_IMAGE_FILP 0
 #endif
 
-typedef unsigned char byte_t;
-
 #define VISCA_ZOOM_SPEED_MIN	0x00
 #define VISCA_ZOOM_SPEED_MAX	0x07
 #define VISCA_ZOOM_POS_MIN	0x00
@@ -135,11 +135,14 @@ enum {
 	visca_nr_inq_zoom_pos,
 	visca_nr_inq_version,
 	visca_nr_inq_pantilt_status,
-
+	visca_nr_inq_pantilt_maxspeed,
+	visca_nr_inq_pantilt_pos, 
 	visca_nr_max,
 };
 
 #define VISCA_IF_BUF_SIZE 16
+typedef unsigned char byte_t;
+
 struct visca_interface {	
 	pthread_mutex_t lock; /* protect the whole structure */
 	int opened;
@@ -258,5 +261,7 @@ VISCA_DEFINE_CMD4(pantilt_relative_pos, int, pan_speed, int, tilt_speed,
 
 VISCA_DEFINE_INQ1(zoom_pos, int*, pos)
 VISCA_DEFINE_INQ3(version, int*, vendor, int*, model, int*, rom_version)
-
+VISCA_DEFINE_INQ1(pantilt_status, int*, status)
+VISCA_DEFINE_INQ2(pantilt_maxspeed, int*, pan_speed, int*, tilt_speed)
+VISCA_DEFINE_INQ2(pantilt_pos, int*, pan_pos, int*, tilt_pos)
 #endif

@@ -155,11 +155,10 @@ struct command {
 	byte_t *data;
 	int count;
 	int arg_start;
-	int (*fill_packet)(const struct command *cmd, byte_t *buf, long arg);
+	int (*fill_packet)(byte_t *buf, long arg);
 	/* for inquire */
 	int ret_start;
-	void (*parse_packet)(const struct command *cmd, 
-			     const byte_t *buf, void *ret);
+	void (*parse_packet)(const byte_t *buf, void *ret);
 };
 
 #define __COMMAND_INIT(_data, _arg_start, _fill_packet,		\
@@ -180,178 +179,256 @@ struct command {
 #define INQUIRY_INIT(data, ret_start, parse_packet) \
 	__COMMAND_INIT(data, -1, NULL, ret_start, parse_packet)
 
-static inline void to_4bytes(byte_t *buf, int *pos, int arg) {
-	buf[(*pos)++] = (arg & 0xf000) >> 12;
-	buf[(*pos)++] = (arg & 0x0f00) >> 8;
-	buf[(*pos)++] = (arg & 0x00f0) >> 4;
-	buf[(*pos)++] = (arg & 0x000f);
+static inline void to_byte(byte_t *buf, int *pos, int x) 
+{
+	buf[(*pos)++] = (byte_t) x;
 }
 
-
-static inline int check_arg_limit(char *arg_name, int arg, 
-				  int arg_min, int arg_max) 
+static inline void to_4lbytes(byte_t *buf, int *pos, int x) 
 {
-	if (arg < arg_min || arg > arg_max) {
+	to_byte(buf, pos, (x & 0xf000) >> 12);
+	to_byte(buf, pos, (x & 0x0f00) >> 8);
+	to_byte(buf, pos, (x & 0x00f0) >> 4);
+	to_byte(buf, pos, (x & 0x000f));
+}
+
+static inline int from_byte(const byte_t *buf, int *pos) 
+{
+	return buf[(*pos)++];
+}
+
+static inline int from_2bytes(const byte_t *buf, int *pos) {
+	int ret = 0;
+	
+	ret |= (from_byte(buf, pos) << 8);
+	ret |= from_byte(buf, pos);
+	return ret;
+}
+
+static inline int from_4lbytes(const byte_t *buf, int *pos) 
+{
+	int ret = 0;
+
+	BUG_ON((buf[*pos] & 0xf0) || (buf[*pos + 1] & 0xf0) 
+	       || (buf[*pos + 2] & 0xf0) || (buf[*pos + 3] & 0xf0));
+	
+	ret |= (from_byte(buf, pos) << 12);
+	ret |= (from_byte(buf, pos) << 8);
+	ret |= (from_byte(buf, pos) << 4);
+	ret |= from_byte(buf, pos);
+	return ret;
+}
+
+static inline int check_limit(char *name, int x, int x_min, int x_max) 
+{
+	if (x < x_min || x > x_max) {
 		pr_warn("%s %d out of band (%d, %d)\n", 
-			arg_name, arg, arg_min, arg_max);
-		return 0;
+			name, x, x_min, x_max);
+		return false;
 	}
-	return 1;
+	return true;
 }
 
-static inline int check_pt_speed(int p, int t) {
-	return check_arg_limit("pan_speed", p, 
-			       VISCA_PAN_SPEED_MIN, VISCA_PAN_SPEED_MAX)
-		&& check_arg_limit("tilt_speed", t, 
-				   VISCA_TILT_SPEED_MIN, VISCA_TILT_SPEED_MAX);
+#define check_z_speed(x)  check_limit("zoom_speed", (x),		\
+					  VISCA_ZOOM_SPEED_MIN,		\
+					  VISCA_ZOOM_SPEED_MAX)
+#define check_z_pos(x)	check_limit("zoom_pos", (x),	\
+					VISCA_ZOOM_POS_MIN,	\
+					VISCA_ZOOM_POS_MAX)
+struct pt_speed {
+	int p;
+        int t;
+};
+#define PT_SPEED_INIT(p_speed, t_speed) { \
+	.p = p_speed, \
+	.t = t_speed, \
 }
-
-static int fill_zoom_speed(const struct command *cmd, byte_t *buf, long arg) 
+static inline int check_pt_speed(const struct pt_speed *speed) 
 {
-	if (!check_arg_limit("zoom_speed", (int)arg, 
-			     VISCA_ZOOM_SPEED_MIN, VISCA_ZOOM_SPEED_MAX))
-		return EXIT_ERR;
+	return check_limit("pan_speed", speed->p, 
+			   VISCA_PAN_SPEED_MIN, VISCA_PAN_SPEED_MAX)
+		&& check_limit("tilt_speed", speed->t, 
+			       VISCA_TILT_SPEED_MIN, VISCA_TILT_SPEED_MAX);
+}
+static inline int __check_pt_dir(char *name, int dir) 
+{
+	if (!(dir == __PT_N || dir == __PT_P || dir == __PT_STOP)) {
+		pr_warn("%s %d invalid\n", name, dir);
+		return false;
+	}
+	return true;
+}
+static inline int check_pt_dir(int p_dir, int t_dir)
+{
+	if (!__check_pt_dir("pan_dir", p_dir))
+		return false;
 
-	buf[cmd->arg_start] |= (byte_t) arg;
+	if (!__check_pt_dir("tilt_dir", t_dir))
+		return false;
+	
+	if (p_dir == __PT_STOP && t_dir == __PT_STOP) {
+		pr_warn("pan_dir tilt_dir must not be 0x03 0x03\n"
+		     "use command pantilt_stop instead\n");
+		return false;
+	}
+	return true;
+}
+struct pt_pos {
+	int p;
+	int t;
+};
+#define PT_POS_INIT(p_pos, t_pos) { \
+	.p = p_pos, \
+	.t = t_pos, \
+}
+static inline int check_pt_pos(struct pt_pos *pos) 
+{
+	return check_limit("pan_pos", pos->p, 
+			   VISCA_PAN_POS_MIN, VISCA_PAN_POS_MAX)
+	      && check_limit("tilt_pos", pos->t, 
+			     VISCA_TILT_POS_MIN, VISCA_TILT_POS_MAX);
+}
+
+static int fill_z_speed(byte_t *buf, long arg) 
+{
+	int z_speed = (int) arg;
+	if (!check_z_speed(z_speed))
+		return EXIT_ERR;
+	    	
+	buf[0] |= (byte_t) z_speed;
 	return 0;
 }
 
-static int fill_zoom_pos(const struct command *cmd, byte_t *buf, long _arg) 
+static int fill_z_pos(byte_t *buf, long arg) 
 {
-	int pos;	
-	int arg = (int) _arg;
+	int pos = 0;	
+	int z_pos = (int) arg;
 	
-	if (!check_arg_limit("zoom_pos", arg, 
-			     VISCA_ZOOM_POS_MIN, VISCA_ZOOM_POS_MAX))
+	if (!check_z_pos(z_pos))
 		return EXIT_ERR;
 	
-	pos = cmd->arg_start;
-	to_4bytes(buf, &pos, arg);
+	to_4lbytes(buf, &pos, arg);
 	return 0;
+}
+
+static inline void __fill_pt_speed(byte_t *buf, int *pos, 
+				   const struct pt_speed *speed) 
+{
+	to_byte(buf, pos, speed->p);
+	to_byte(buf, pos, speed->t);
+}
+
+struct pt_speed_dir {
+	struct pt_speed speed;
+	int dir;
+};
+#define PT_SPEED_DIR_INIT(p_speed, t_speed, dir) {	\
+	.speed = PT_SPEED_INIT(p_speed, t_speed), \
+	.dir = dir,			       \
 }
 
 #define PAN_DIR(dir)  (((dir) & 0x0f00) >> 8)
 #define TILT_DIR(dir) ((dir) & 0x000f)
 
-static inline int check_pt_dir(char *arg_name, int arg) {
-	if (!(arg == __PT_N || arg == __PT_P || arg == __PT_STOP)) {
-		pr_warn("%s %d invalid\n", arg_name, arg);
-		return 0;
-	}
-	return 1;
+static int fill_pt_speed_dir(byte_t *buf, long arg) 
+{
+	struct pt_speed_dir *speed_dir = (struct pt_speed_dir *) arg;
+	int pos = 0;
+	int p_dir = PAN_DIR(speed_dir->dir);
+	int t_dir = TILT_DIR(speed_dir->dir);
+
+        if (!check_pt_speed(&speed_dir->speed))
+		return EXIT_ERR;
+
+	if (!check_pt_dir(p_dir, t_dir))
+		return EXIT_ERR;
+
+	__fill_pt_speed(buf, &pos, &speed_dir->speed);
+	to_byte(buf, &pos, p_dir);
+	to_byte(buf, &pos, t_dir);
+	return 0;
+}
+	
+struct pt_speed_pos {
+	struct pt_speed speed;
+	struct pt_pos pos;
+};
+#define PT_SPEED_POS_INIT(p_speed, t_speed, p_pos, t_pos) { \
+	.speed = PT_SPEED_INIT(p_speed, t_speed), \
+	.pos = PT_POS_INIT(p_pos, t_pos), \
 }
 
-#define __fill_pt_speed(buf, pos, arg) do {	    \
-		(buf)[(pos)++] = (arg)->pan_speed;   \
-		(buf)[(pos)++] = (arg)->tilt_speed;  \
-} while(0)
-
-struct visca_pantilt_dir {
-	int pan_speed;
-	int tilt_speed;
-	int dir;
-};
-
-static int fill_pt_dir(const struct command *cmd, byte_t *buf, long _arg) 
+static int fill_pt_speed_pos(byte_t *buf, long arg) 
 {
-	struct visca_pantilt_dir *arg = (struct visca_pantilt_dir *) _arg;
-	int pos;
-	int pan_dir, tilt_dir;
+	struct pt_speed_pos *speed_pos = (struct pt_speed_pos *) arg;
+	int pos = 0;
 
-        if (!(check_pt_speed(arg->pan_speed, arg->tilt_speed)))
-		return EXIT_ERR;
-	
-	pan_dir = PAN_DIR(arg->dir);
-	if (!check_pt_dir("pan_dir", pan_dir))
+        if (!check_pt_speed(&speed_pos->speed))
 		return EXIT_ERR;
 
-	tilt_dir = TILT_DIR(arg->dir);
-	if (!check_pt_dir("tilt_dir", tilt_dir))
+	if (!check_pt_pos(&speed_pos->pos))
 		return EXIT_ERR;
 	
-	if (pan_dir == __PT_STOP && tilt_dir == __PT_STOP) {
-		pr_warn("pan_dir tilt_dir must not be 0x03 0x03\n"
-		     "use command pantilt_stop instead\n");
-		return EXIT_ERR;
-	}
-	
-	pos = cmd->arg_start;
-	__fill_pt_speed(buf, pos, arg);
-	buf[pos++] = pan_dir;
-	buf[pos++] = tilt_dir;
+	__fill_pt_speed(buf, &pos, &speed_pos->speed);
+	to_4lbytes(buf, &pos, speed_pos->pos.p);
+	to_4lbytes(buf, &pos, speed_pos->pos.t);
 	return 0;
 }
 
-struct visca_pantilt_pos {
-	int pan_speed;
-	int tilt_speed;
-	int pan_pos;
-	int tilt_pos;
-};
-
-static int fill_pt_pos(const struct command *cmd, byte_t *buf, long _arg) 
+static void parse_z_pos(const byte_t *buf, void *ret)
 {
-	struct visca_pantilt_pos *arg = (struct visca_pantilt_pos *) _arg;
-	int pos;
+	int *z_pos = (int *) ret;
+	int pos = 0;
 
-        if (!(check_pt_speed(arg->pan_speed, arg->tilt_speed)))
-		return EXIT_ERR;
+	*z_pos = from_4lbytes(buf, &pos);
 
-	if (!(check_arg_limit("pan_pos", arg->pan_pos, 
-			       VISCA_PAN_POS_MIN, VISCA_PAN_POS_MAX)
-	      && check_arg_limit("tilt_pos", arg->tilt_pos, 
-				  VISCA_TILT_POS_MIN, VISCA_TILT_POS_MAX)))
-		return EXIT_ERR;
-	
-	pos = cmd->arg_start;
-	__fill_pt_speed(buf, pos, arg);
-	to_4bytes(buf, &pos, arg->pan_pos);
-	to_4bytes(buf, &pos, arg->tilt_pos);
-	return 0;
+	BUG_ON(!check_z_pos(*z_pos));
 }
 
-static void parse_zoom_pos(const struct command *cmd, 
-			   const byte_t *buf, void *_ret)
-{
-	int *ret = (int *) _ret;
-	int pos = cmd->ret_start;
 
-	BUG_ON((buf[pos] & 0xf0) || (buf[pos + 1] & 0xf0) 
-	       || (buf[pos + 2] & 0xf0) || (buf[pos + 3] & 0xf0));
-	*ret = buf[pos] << 12 | buf[pos + 1] << 8 
-		| buf[pos + 2] << 4 | buf[pos + 3];
-}
-
-static inline int from_2bytes(const byte_t *buf, int *pos) {
-	int ret = buf[*pos] << 8 | buf[*pos + 1];
-	(*pos) += 2;
-	return ret;
-}
-
-struct visca_version {
+struct version {
 	int vendor;
 	int model;
 	int rom_version;
 };
 
-static void parse_version(const struct command *cmd, 
-			  const byte_t *buf, void *_ret)
+static void parse_version(const byte_t *buf, void *ret)
 {
-	struct visca_version *ret = (struct visca_version *)_ret;
-	int pos = cmd->ret_start;
+	struct version *version = (struct version *)ret;
+	int pos = 0;
 	
-	ret->vendor = from_2bytes(buf, &pos);
-	ret->model = from_2bytes(buf, &pos);
-	ret->rom_version = from_2bytes(buf, &pos);
+	version->vendor = from_2bytes(buf, &pos);
+	version->model = from_2bytes(buf, &pos);
+	version->rom_version = from_2bytes(buf, &pos);
 }
 
-static void parse_pantilt_status(const struct command *cmd, 
-				 const byte_t *buf, void *_ret)
+static void parse_pt_status(const byte_t *buf, void *ret)
 {
-	int *ret = (int *)_ret;
-	int pos = cmd->ret_start;
+	int *status = (int *)ret;
+	int pos = 0;
 
-	*ret = from_2bytes(buf, &pos);
+	*status = from_2bytes(buf, &pos);
+}
+
+static void parse_pt_speed(const byte_t *buf, void *ret)
+{
+	struct pt_speed *pt_speed = (struct pt_speed *) ret;
+	int pos = 0;
+	
+	pt_speed->p = from_byte(buf, &pos);
+	pt_speed->t = from_byte(buf, &pos);
+	
+	BUG_ON(!check_pt_speed(pt_speed));
+}
+
+static void parse_pt_pos(const byte_t *buf, void *ret)
+{
+	struct pt_pos *pt_pos = (struct pt_pos *) ret;
+	int pos = 0;
+
+	pt_pos->p = from_4lbytes(buf, &pos);
+	pt_pos->t = from_4lbytes(buf, &pos);
+	BUG_ON(!check_pt_pos(pt_pos));
 }
 
 #define HEAD_BROADCAST(...)	{BYTE_BROADCAST, ##__VA_ARGS__}
@@ -395,6 +472,8 @@ static byte_t cmd_pantilt_reset[] = CMD_PANTILTER(0x05);
 static byte_t inq_zoom_pos[] = INQ_CAMERA1(0x47);
 static byte_t inq_version[] = INQ_INTERFACE(0x02);
 static byte_t inq_pantilt_status[] = INQ_PANTILTER(0x10);
+static byte_t inq_pantilt_maxspeed[] = INQ_PANTILTER(0x11);
+static byte_t inq_pantilt_pos[] = INQ_PANTILTER(0x12);
 
 #define CMD_ENTRY0(name) \
 	[visca_nr_cmd_##name] = COMMAND_INIT0(cmd_##name)
@@ -409,18 +488,20 @@ static struct command cmds[] = {
 	CMD_ENTRY0(zoom_stop),
 	CMD_ENTRY0(zoom_tele),
 	CMD_ENTRY0(zoom_wide),
-	CMD_ENTRY(zoom_tele_speed, 4, fill_zoom_speed),
-	CMD_ENTRY(zoom_wide_speed, 4, fill_zoom_speed),
-	CMD_ENTRY(zoom_direct, 4, fill_zoom_pos),
-	CMD_ENTRY(pantilt_dir, 4, fill_pt_dir),
+	CMD_ENTRY(zoom_tele_speed, 4, fill_z_speed),
+	CMD_ENTRY(zoom_wide_speed, 4, fill_z_speed),
+	CMD_ENTRY(zoom_direct, 4, fill_z_pos),
+	CMD_ENTRY(pantilt_dir, 4, fill_pt_speed_dir),
 	CMD_ENTRY0(pantilt_stop),
-	CMD_ENTRY(pantilt_absolute_pos, 4, fill_pt_pos),
-	CMD_ENTRY(pantilt_relative_pos, 4, fill_pt_pos),
+	CMD_ENTRY(pantilt_absolute_pos, 4, fill_pt_speed_pos),
+	CMD_ENTRY(pantilt_relative_pos, 4, fill_pt_speed_pos),
 	CMD_ENTRY0(pantilt_home),
 	CMD_ENTRY0(pantilt_reset),
-	INQ_ENTRY(zoom_pos, 2, parse_zoom_pos),
+	INQ_ENTRY(zoom_pos, 2, parse_z_pos),
 	INQ_ENTRY(version, 2, parse_version),
-	INQ_ENTRY(pantilt_status, 2, parse_pantilt_status),
+	INQ_ENTRY(pantilt_status, 2, parse_pt_status),
+	INQ_ENTRY(pantilt_maxspeed, 2, parse_pt_speed),
+	INQ_ENTRY(pantilt_pos, 2, parse_pt_pos),
 };
 
 static int recv_packet(int fd, byte_t *buf, int *count)
@@ -534,8 +615,8 @@ static inline int if_send_with_reply(struct visca_interface *iface)
 			       iface->recv_buf, &iface->recv_pos);
 }
 
-static int fill_const_packet(struct command *cmd, byte_t *buf, int *count, 
-			     int cam_addr) 
+static int fill_const_packet(const byte_t *data, int data_count,
+			     byte_t *buf, int *count, int cam_addr) 
 {
 	int i;
 
@@ -544,21 +625,38 @@ static int fill_const_packet(struct command *cmd, byte_t *buf, int *count,
 		return EXIT_ERR;
 	}
 	
-	if (PACKET_IS_BROADCAST(cmd->data)){
-		buf[0] = cmd->data[0];
+	if (PACKET_IS_BROADCAST(data)){
+		buf[0] = data[0];
 	} else {
-		BUG_ON(cmd->data[0] != BYTE_DIRECT);
-		buf[0] = cmd->data[0] | cam_addr;
+		BUG_ON(data[0] != BYTE_DIRECT);
+		buf[0] = data[0] | cam_addr;
 	}
 	
 	/* one terminator */
-	BUG_ON(cmd->count + 1 > VISCA_IF_BUF_SIZE);
-	for (i = 1; i < cmd->count; i++)
-		buf[i] = cmd->data[i];
+	BUG_ON(data_count + 1 > VISCA_IF_BUF_SIZE);
+	for (i = 1; i < data_count; i++)
+		buf[i] = data[i];
 
-	buf[cmd->count] = TERMINATOR;
-	*count = cmd->count + 1;
+	buf[data_count] = TERMINATOR;
+	*count = data_count + 1;
 	return 0;
+}
+
+static inline int cmd_fill_const_packet(struct command *cmd, byte_t *buf, 
+				    int *count, int cam_addr) 
+{
+	return fill_const_packet(cmd->data, cmd->count, buf, count, cam_addr);
+}
+static inline int __cmd_fill_packet(struct command *cmd, byte_t *buf, long arg)
+{
+	BUG_ON(cmd->arg_start < 0 
+	       || cmd->arg_start >= VISCA_IF_BUF_SIZE);	
+	return cmd->fill_packet(buf + cmd->arg_start, arg);
+}
+static inline void __cmd_parse_packet(struct command *cmd, byte_t *buf, void *ret) {
+	BUG_ON(cmd->ret_start < 0
+	       || cmd->ret_start >= VISCA_IF_BUF_SIZE);
+	cmd->parse_packet(buf + cmd->ret_start, ret);
 }
 
 int __visca_command(struct visca_interface *iface, int cmd_idx, int cam_addr, 
@@ -578,12 +676,12 @@ int __visca_command(struct visca_interface *iface, int cmd_idx, int cam_addr,
 	BUG_ON(cmd_idx >= visca_nr_max);
 	cmd = cmds + cmd_idx;
 
-	if ((error = fill_const_packet(cmd, iface->send_buf, &iface->send_pos, cam_addr)))
+	if ((error = cmd_fill_const_packet(cmd, iface->send_buf, 
+					   &iface->send_pos, cam_addr)))
 		goto unlock;
 
 	if (cmd->fill_packet) {
-		BUG_ON(cmd->arg_start < 0);
-		if ((error = cmd->fill_packet(cmd, iface->send_buf, arg)))
+		if ((error = __cmd_fill_packet(cmd, iface->send_buf, arg)))
 			goto unlock;
 	}
 
@@ -591,10 +689,8 @@ int __visca_command(struct visca_interface *iface, int cmd_idx, int cam_addr,
 		goto unlock;
 
 	
-	if (ret && cmd->parse_packet) {
-		BUG_ON(cmd->ret_start < 0);		
-		cmd->parse_packet(cmd, iface->recv_buf, ret);
-	}
+	if (ret && cmd->parse_packet)
+		__cmd_parse_packet(cmd, iface->recv_buf, ret);
 
 
 	if_unlock(iface);
@@ -617,48 +713,39 @@ unlock:
 int _visca_pantilt_dir(struct visca_interface *iface, int cam_addr, 
 			int pan_speed, int tilt_speed, int dir)
 {
-	struct visca_pantilt_dir arg = {
-		.pan_speed = pan_speed,
-		.tilt_speed = tilt_speed,
-		.dir = dir,
-	};
+	struct pt_speed_dir speed_dir = PT_SPEED_DIR_INIT(pan_speed,
+							   tilt_speed, dir);
 	return __visca_cmd_command(iface, visca_nr_cmd_pantilt_dir, 
-				   cam_addr, (long) &arg);
+				   cam_addr, (long) &speed_dir);
 }
 
 int _visca_pantilt_absolute_pos(struct visca_interface *iface, int cam_addr,
 				int pan_speed, int tilt_speed, 
 				int pan_pos, int tilt_pos)
 {
-	struct visca_pantilt_pos arg = {
-		.pan_speed = pan_speed,
-		.tilt_speed = tilt_speed,
-		.pan_pos = pan_pos,
-		.tilt_pos = tilt_pos
-	};
+	struct pt_speed_pos speed_pos = PT_SPEED_POS_INIT(pan_speed, 
+							  tilt_speed,
+							  pan_pos, tilt_pos);
 	return __visca_cmd_command(iface, visca_nr_cmd_pantilt_absolute_pos, 
-				   cam_addr, (long) &arg);
+				   cam_addr, (long) &speed_pos);
 } 
 
 int _visca_pantilt_relative_pos(struct visca_interface *iface, int cam_addr, 
 				int pan_speed, int tilt_speed, 
 				int pan_pos, int tilt_pos)
 {
-	struct visca_pantilt_pos arg = {
-		.pan_speed = pan_speed,
-		.tilt_speed = tilt_speed,
-		.pan_pos = pan_pos,
-		.tilt_pos = tilt_pos
-	};
+	struct pt_speed_pos speed_pos = PT_SPEED_POS_INIT(pan_speed, 
+							  tilt_speed,
+							  pan_pos, tilt_pos);
 	return __visca_cmd_command(iface, visca_nr_cmd_pantilt_relative_pos, 
-			       cam_addr, (long) &arg);
+			       cam_addr, (long) &speed_pos);
 } 
 
 int _visca_inq_version(struct visca_interface *iface, int cam_addr,
 		       int *vendor, int *model, int *rom_version)
 {
 	int err = 0;
-	struct visca_version version;
+	struct version version;
 	
 	if ((err = __visca_inq_command(iface, visca_nr_inq_version, 
 				       cam_addr, &version)))
@@ -667,5 +754,34 @@ int _visca_inq_version(struct visca_interface *iface, int cam_addr,
 	*vendor = version.vendor;
 	*model = version.model;
 	*rom_version = version.rom_version;
+	return err;
+}
+
+int _visca_inq_pantilt_maxspeed(struct visca_interface *iface, int cam_addr,
+				int *pan_speed, int *tilt_speed)
+{
+	int err = 0;
+	struct  pt_speed pt_speed;
+	
+	if ((err = __visca_inq_command(iface, visca_nr_inq_pantilt_maxspeed, 
+				       cam_addr, &pt_speed)))
+		return err;
+	
+	*pan_speed = pt_speed.p;
+	*tilt_speed = pt_speed.t;
+	return err;
+}
+int _visca_inq_pantilt_pos(struct visca_interface *iface, int cam_addr,
+			   int *pan_pos, int *tilt_pos)
+{
+	int err = 0;
+	struct  pt_pos pt_pos;
+	
+	if ((err = __visca_inq_command(iface, visca_nr_inq_pantilt_pos, 
+				       cam_addr, &pt_pos)))
+		return err;
+	
+	*pan_pos = pt_pos.p;
+	*tilt_pos = pt_pos.t;
 	return err;
 }
