@@ -7,7 +7,10 @@
 #include <stdlib.h>
 #include <err.h>
 
-#define ARRAY_SIZE(x) (sizeof((x))/sizeof((x)[0]))
+#define ARRAY_SIZE(x)	(sizeof((x))/sizeof((x)[0]))
+#define ARG_NR(type, ...)  (sizeof((type[]){__VA_ARGS__})/sizeof(type))
+
+typedef int  		bool;
 #define true		1
 #define false		0
 
@@ -18,13 +21,13 @@
 #define pr_warn(fmt, ...) __pr("WARN: "fmt, ##__VA_ARGS__)
 #define pr_err(fmt, ...) __pr("ERROR: "fmt, ##__VA_ARGS__)
 
-#define pr_warn_str(str) pr_warn("%s", str)
-#define pr_err_str(str) pr_err("%s", str)
+#define pr_warn_str(str) pr_warn("%s\n", str)
+#define pr_err_str(str) pr_err("%s\n", str)
 
 #ifdef DEBUG
 #define dbg  __pr
 /* debug with line position*/
-#define dbgl(fmt, ...) dbg("DEBUG %s,%d: "fmt, __FILE__, __LINE__, __VA_ARGS__)
+#define dbgl(fmt, ...) dbg("DEBUG %s,%d: "fmt, __FILE__, __LINE__, ##__VA_ARGS__)
 #else
 #define dbg
 #define dbgl
@@ -132,11 +135,13 @@ enum {
 	visca_nr_cmd_pantilt_relative_pos,
 	visca_nr_cmd_pantilt_home,
 	visca_nr_cmd_pantilt_reset,
+	visca_nr_cmd_dzoom_mode,
 	visca_nr_inq_zoom_pos,
 	visca_nr_inq_version,
 	visca_nr_inq_pantilt_status,
 	visca_nr_inq_pantilt_maxspeed,
 	visca_nr_inq_pantilt_pos, 
+	visca_nr_inq_dzoom_mode,
 	visca_nr_max,
 };
 
@@ -258,10 +263,13 @@ VISCA_DEFINE_CMD4(pantilt_absolute_pos, int, pan_speed,
 		  int, tilt_speed, int, pan_pos, int, tilt_pos)
 VISCA_DEFINE_CMD4(pantilt_relative_pos, int, pan_speed, int, tilt_speed, 
 		  int, pan_pos, int, tilt_pos)
+VISCA_DEFINE_CMD1(dzoom_mode, bool, flag)
 
 VISCA_DEFINE_INQ1(zoom_pos, int*, pos)
 VISCA_DEFINE_INQ3(version, int*, vendor, int*, model, int*, rom_version)
 VISCA_DEFINE_INQ1(pantilt_status, int*, status)
 VISCA_DEFINE_INQ2(pantilt_maxspeed, int*, pan_speed, int*, tilt_speed)
 VISCA_DEFINE_INQ2(pantilt_pos, int*, pan_pos, int*, tilt_pos)
+VISCA_DEFINE_INQ1(dzoom_mode, bool*, flag)
+
 #endif

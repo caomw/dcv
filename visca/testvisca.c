@@ -39,7 +39,7 @@ void test_pantilt()
 	visca_pantilt_dir(pif, 24, 23, VISCA_PT_UP);
 	sleep(SLEEP_INTERVAL);
 	visca_pantilt_stop(pif);
-
+	
 	visca_pantilt_dir(pif, 5, 5, VISCA_PT_DOWN);
 	sleep(SLEEP_INTERVAL);
 	visca_pantilt_stop(pif);
