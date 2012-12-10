@@ -36,9 +36,9 @@ typedef int  		bool;
 #define likely(x)      __builtin_expect(!!(x), 1)
 #define unlikely(x)    __builtin_expect(!!(x), 0)
 
-#define EXIT_ERR	-1
+#define VISCA_ERR	-1
 #define EXIT_BUG	-2
-#define EXIT_SYS_BUG	-3
+#define EXIT_SYSBUG	-3
 
 #define BUG() do {							    \
 	__pr("BUG failure at %s:%d/%s()!\n", __FILE__, __LINE__, __func__); \
@@ -48,7 +48,7 @@ typedef int  		bool;
 #define BUG_ON(cond) do { if(unlikely(cond)) BUG(); } while(0)
 
 #define __SYS_BUG(call) do {				\
-	err(EXIT_SYS_BUG, "syscall " #call		\
+	err(EXIT_SYSBUG, "syscall " #call		\
 		"BUG failure at %s:%d/%s()!\n",		\
 		__FILE__, __LINE__, __func__);	\
 } while(0)
@@ -78,47 +78,85 @@ typedef int  		bool;
 #define VISCA_IMAGE_FILP 0
 #endif
 
-#define VISCA_ZOOM_SPEED_MIN	0x00
-#define VISCA_ZOOM_SPEED_MAX	0x07
-#define VISCA_ZOOM_POS_MIN	0x00
-#define VISCA_ZOOM_POS_MAX	0x4000
-#define VISCA_PAN_SPEED_MIN	0x01
-#define VISCA_PAN_SPEED_MAX	0x18
-#define VISCA_TILT_SPEED_MIN    0x01
-#define VISCA_TILT_SPEED_MAX	0x17
+#define VISCA_Z_SPEED_MIN	0x00
+#define VISCA_Z_SPEED_MAX	0x07
+#define VISCA_Z_POS_MIN		0x00
+#define VISCA_Z_POS_MAX		0x4000
+#define VISCA_P_SPEED_MIN	0x01
+#define VISCA_P_SPEED_MAX	0x18
+#define VISCA_T_SPEED_MIN    	0x01
+#define VISCA_T_SPEED_MAX	0x17
 
-#define VISCA_PAN_POS_MIN       ((int16_t)0xf725)
-#define VISCA_PAN_POS_MAX       ((int16_t)0x08db)
+#define VISCA_P_POS_MIN       ((int16_t)0xf725)
+#define VISCA_P_POS_MAX       ((int16_t)0x08db)
 
 #if !VISCA_IMAGE_FILP
-#define VISCA_TILT_POS_MIN	((int16_t)0xfe70)
-#define VISCA_TILT_POS_MAX	((int16_t)0x04b0)
+#define VISCA_T_POS_MIN	((int16_t)0xfe70)
+#define VISCA_T_POS_MAX	((int16_t)0x04b0)
 #else
-#define VISCA_TILT_POS_MIN	((int16_t)0xfb50)
-#define VISCA_TILT_POS_MAX	((int16_t)0x0190)
+#define VISCA_T_POS_MIN	((int16_t)0xfb50)
+#define VISCA_T_POS_MAX	((int16_t)0x0190)
 #endif
 
-#define __PT_P            	0x01
-#define __PT_N            	0x02
-
-#define __PT_LEFT	        __PT_P
-#define __PT_RIGHT     		__PT_N
-#define __PT_UP        		__PT_P
-#define __PT_DOWN	        __PT_N
+#define __P_LEFT	        0x01
+#define __P_RIGHT     		0x02
+#define __T_UP        		0x01
+#define __T_DOWN	        0x02
 #define __PT_STOP		0x03
 
-#define __PT_DIR(byte0, byte1)    ((byte0) << 8 | (byte1))
+#define P_DIR_SHIFT		8
 
-#define VISCA_PT_UP    		__PT_DIR(__PT_STOP, __PT_UP)
-#define VISCA_PT_DOWN    	__PT_DIR(__PT_STOP, __PT_DOWN)
-#define VISCA_PT_LEFT		__PT_DIR(__PT_LEFT, __PT_STOP)
-#define VISCA_PT_RIGHT		__PT_DIR(__PT_RIGHT, __PT_STOP)
-#define VISCA_PT_UPLEFT		__PT_DIR(__PT_LEFT, __PT_UP)
-#define VISCA_PT_UPRIGHT	__PT_DIR(__PT_RIGHT, __PT_UP)
-#define VISCA_PT_DOWNLEFT	__PT_DIR(__PT_LEFT, __PT_DOWN)
-#define VISCA_PT_DOWNRIGHT	__PT_DIR(__PT_RIGHT, __PT_DOWN)
-#define VISCA_PT_STOP		__PT_DIR(__PT_STOP, __PT_STOP)
+#define PT_UP    		(__PT_STOP << P_DIR_SHIFT) | __T_UP)
+#define PT_DOWN        		(__PT_STOP << P_DIR_SHIFT) | __T_DOWN)
+#define PT_LEFT		        (__P_LEFT << P_DIR_SHIFT) | __PT_STOP)
+#define PT_RIGHT		(__P_RIGHT << P_DIR_SHIFT | __PT_STOP)
+#define PT_UPLEFT		(__P_LEFT << P_DIR_SHIFT | __T_UP)
+#define PT_UPRIGHT		(__P_RIGHT << P_DIR_SHIFT | __T_UP)
+#define PT_DOWNLEFT		(__P_LEFT << P_DIR_SHIFT | __T_DOWN)
+#define PT_DOWNRIGHT		(__P_RIGHT << P_DIR_SHIFT | __T_DOWN)
+#define PT_STOP	       		(__PT_STOP << P_DIR_SHIFT | __PT_STOP)
 
+#define STAT_P_DIR_MASK		0x8083
+#define STAT_P_DIR_SHIFT	0
+#define STAT_P_DIR_LEFT		(__P_LEFT << STAT_P_DIR_SHIFT)
+#define STAT_P_DIR_RIGHT	(__P_RIGHT << STAT_P_DIR_SHIFT)
+
+#define STAT_T_DIR_MASK		0x808c
+#define STAT_T_DIR_SHIFT	2
+#define STAT_T_DIR_UP       	(__T_UP << STAT_T_DIR_SHIFT)
+#define STAT_T_DIR_DOWN		(__T_DOWN << STAT_T_DIR_SHIFT)
+
+#define __PT_ERR		0x00
+#define __PT_POS_ERR		0x01
+#define __PT_MEC_ERR		0x02
+
+#define STAT_P_ERR_MASK		0x8030
+#define STAT_P_ERR_SHIFT	4
+#define STAT_P_ERR		(__PT_ERR << STAT_P_ERR_SHIFT)
+#define STAT_P_POS_ERR		(__PT_POS_ERR << STAT_P_ERR_SHIFT)
+#define STAT_P_MEC_ERR		(__PT_MEC_ERR << STAT_P_ERR_SHIFT)
+
+#define STAT_T_ERR_MASK		0x8380
+#define STAT_T_ERR_SHIFT	8
+#define STAT_T_ERR		(__PT_ERR << STAT_T_ERR_SHIFT)
+#define STAT_T_POS_ERR		(__PT_POS_ERR << STAT_T_ERR_SHIFT)
+#define STAT_T_MEC_ERR		(__PT_MEC_ERR << STAT_T_ERR_SHIFT)
+
+#define STAT_PT_ERR_MASK	(STAT_P_ERR_MASK | STAT_T_ERR_MASK)
+
+#define STAT_PT_CMD_MASK       	0x8c80
+#define STAT_PT_CMD_SHIFT	10
+#define STAT_PT_CMD_NONE	(0x00 << STAT_PT_CMD_SHIFT)
+#define STAT_PT_CMD_MIDST	(0x01 << STAT_PT_CMD_SHIFT)
+#define STAT_PT_CMD_COMPLETED	(0x02 << STAT_PT_CMD_SHIFT)
+#define STAT_PT_CMD_FAILED	(0x03 << STAT_PT_CMD_SHIFT)
+
+#define STAT_PT_INIT_MASK	0xb080
+#define STAT_PT_INIT_SHIFT      12
+#define STAT_PT_INIT_NONE	(0x00 << STAT_PT_INIT_SHIFT)
+#define STAT_PT_INITING		(0x01 << STAT_PT_INIT_SHIFT)
+#define STAT_PT_INITED		(0x02 << STAT_PT_INIT_SHIFT)
+#define STAT_PT_INIT_FAILED	(0x03 << STAT_PT_INIT_SHIFT)
 
 enum {
 	visca_nr_cmd_set_address,
