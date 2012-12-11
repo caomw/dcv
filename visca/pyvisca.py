@@ -76,15 +76,19 @@ def check(x):
 
 class ViscaInterface:
     def __init__(self):
-        self.pif = _lib.visca_alloc_init_if()
-        if not self.pif:
-            raise "NULL Pointer"
         self.opened = False
 
     def open(self, dev_name):
         if self.opened:
             return
-
+        
+        # 'alloc' can put in the __init__ function but 'free' cant put in the
+        # '__del__' function. Cause the '_lib' will freed first, which will
+        # make 'visca_free_if' lost its mother, I dont know how to keep the
+        # '_lib' longer time
+        self.pif = _lib.visca_alloc_init_if()
+        if not self.pif:
+            raise "NULL Pointer"
         check(_lib.visca_open_if(self.pif, dev_name))
         self.opened = True
 
@@ -92,9 +96,9 @@ class ViscaInterface:
         if not self.opened:
             return
 
+        self.opened = False
         check(_lib.visca_close_if(self.pif))
         _lib.visca_free_if(byref(self.pif))
-        self.opened = False
 
     def zoom_stop(self):
         check(_lib.visca_zoom_stop(self.pif))
