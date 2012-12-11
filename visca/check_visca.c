@@ -199,9 +199,6 @@ int main(int argc, char **argv)
 	int number_failed;
 
 	BUG_ON(visca_open_if(pif, dev_name));
-	BUG_ON(visca_set_address(pif));
-	BUG_ON(visca_clear_if(pif));
-	BUG_ON(visca_dzoom_mode(pif, false));
 	
 	srunner_run_all(sr, CK_NORMAL);
 	number_failed = srunner_ntests_failed(sr);

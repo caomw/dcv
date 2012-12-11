@@ -75,6 +75,9 @@ typedef int  		bool;
 #define RWCALL1(ret, call, errcode1)		\
 	__LCALL_RET(ret, call, ret < 0 && ret != -(errcode1))
 
+#define mutex_lock(lock) LCALL(pthread_mutex_lock(lock))
+#define mutex_unlock(lock) LCALL(pthread_mutex_unlock(lock))
+
 #ifndef VISCA_IMAGE_FILP
 #define VISCA_IMAGE_FILP 0
 #endif
@@ -201,13 +204,14 @@ struct visca_interface {
 	.opened = 0,	   \
 }
 struct visca_interface *visca_alloc_init_if();
+void visca_free_if(struct visca_interface **iface);
+int visca_open_if(struct visca_interface *iface, char *dev_name);
 int visca_if_opened(struct visca_interface *iface)
 {
 	return iface->opened;
 }
-int visca_open_if(struct visca_interface *iface, char *dev_name);
 int visca_close_if(struct visca_interface *iface);
-void visca_free_if(struct visca_interface **iface);
+
 
 /* Unless you know what you do to use the function directly 
  * It doesnt have argument check

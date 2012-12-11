@@ -610,18 +610,10 @@ static int send_with_reply(int fd, const byte_t *send_buf, int send_count,
 	return 0;
 }
 
-static inline int if_send_with_reply(struct visca_interface *iface) 
-{
-	return send_with_reply(iface->fd, 
-			       iface->send_buf, iface->send_pos, 
-			       iface->recv_buf, &iface->recv_pos);
-}
-
 static int fill_const_packet(const byte_t *data, int data_count,
 			     byte_t *buf, int *count, int cam_addr) 
 {
 	int i;
-
 	
 	if (PACKET_IS_BROADCAST(data)){
 		buf[0] = data[0];
@@ -640,26 +632,6 @@ static int fill_const_packet(const byte_t *data, int data_count,
 	return 0;
 }
 
-static inline void cmd_fill_const_packet(struct command *cmd, byte_t *buf, 
-					int *count, int cam_addr) 
-{
-	fill_const_packet(cmd->data, cmd->count, buf, count, cam_addr);
-}
-static inline void __cmd_fill_packet(struct command *cmd, byte_t *buf, 
-				     long arg)
-{
-	BUG_ON(cmd->arg_start < 0 
-	       || cmd->arg_start >= VISCA_IF_BUF_SIZE);	
-	cmd->fill_packet(buf + cmd->arg_start, arg);
-}
-static inline void __cmd_parse_packet(struct command *cmd, byte_t *buf, 
-				      void *ret) 
-{
-	BUG_ON(cmd->ret_start < 0
-	       || cmd->ret_start >= VISCA_IF_BUF_SIZE);
-	cmd->parse_packet(buf + cmd->ret_start, ret);
-}
-
 /* static inline int if_trylock(struct visca_interface *iface)  */
 /* { */
 /* 	int error; */
@@ -671,18 +643,33 @@ static inline void __cmd_parse_packet(struct command *cmd, byte_t *buf,
 /* 	} */
 /* 	return 0; */
 /* } */
-static inline void mutex_lock(pthread_mutex_t *lock)
-{
-	LCALL(pthread_mutex_lock(lock));
-}
-static inline void mutex_unlock(pthread_mutex_t *lock) {
-	LCALL(pthread_mutex_unlock(lock));
+
+static int __if_send_command(struct visca_interface *iface, 
+			     struct command *cmd,
+			     int cam_addr, long arg, void *ret)
+{	
+	int error;
+
+	fill_const_packet(cmd->data, cmd->count, 
+			  iface->send_buf, &iface->send_pos, cam_addr);
+
+	if (cmd->fill_packet)
+		cmd->fill_packet(iface->send_buf + cmd->arg_start, arg);
+
+	if ((error = send_with_reply(iface->fd, 
+				     iface->send_buf, iface->send_pos, 
+				     iface->recv_buf, &iface->recv_pos)))
+		return error;
+
+	if (cmd->parse_packet)
+		cmd->parse_packet(iface->recv_buf + cmd->ret_start, ret);
+	return 0;
 }
 
 int __visca_command(struct visca_interface *iface, int cmd_idx, 
 		    int cam_addr, long arg, void *ret) 
 {
-	int error;
+	int error = 0;
 	struct command *cmd;
 
 	if (!iface) {
@@ -717,18 +704,8 @@ int __visca_command(struct visca_interface *iface, int cmd_idx,
 		goto unlock;
 	}
 		
-	cmd_fill_const_packet(cmd, iface->send_buf, 
-			      &iface->send_pos, cam_addr);
-
-	if (cmd->fill_packet)
-	    __cmd_fill_packet(cmd, iface->send_buf, arg);	
-
-	if ((error = if_send_with_reply(iface)))
+	if ((error = __if_send_command(iface, cmd, cam_addr, arg, ret)))
 		goto unlock;
-	
-	if (cmd->parse_packet)
-		__cmd_parse_packet(cmd, iface->recv_buf, ret);
-
 	/* fix visca pantilt_stop bug or error 
 	 * 'command not executable' will occurs */
 	if (cmd_idx == visca_nr_cmd_pantilt_stop) {
@@ -766,6 +743,7 @@ static void __visca_close_if(struct visca_interface *iface)
 }
 int visca_close_if(struct visca_interface *iface)
 {
+	int error = 0;
 	if (!iface) {
 		pr_warn("interface NULL\n");
 		return VISCA_ERR;
@@ -773,17 +751,16 @@ int visca_close_if(struct visca_interface *iface)
 
 	mutex_lock(&iface->lock);
 	if (!iface->opened) {
+		error = VISCA_ERR;
 		pr_warn("inteface already closed\n");
-		goto fail;
+		goto unlock;
 	}
 
 	__visca_close_if(iface);
 
+unlock:
 	mutex_unlock(&iface->lock);
-	return 0;
-fail:
-	mutex_unlock(&iface->lock);
-	return VISCA_ERR;
+	return error;
 }
 void visca_free_if(struct visca_interface **_iface)
 {
@@ -802,9 +779,20 @@ void visca_free_if(struct visca_interface **_iface)
 	LCALL(pthread_mutex_destroy(&iface->lock));
 	free(iface);
 }
+#define BROADCAST_ADDR	8
+static void send_init_command(struct visca_interface *iface)
+{
+	BUG_ON(__if_send_command(iface, cmds + visca_nr_cmd_set_address, 
+				 BROADCAST_ADDR, 0, NULL));
+	BUG_ON(__if_send_command(iface, cmds + visca_nr_cmd_clear_if, 
+				 BROADCAST_ADDR, 0, NULL));
+	BUG_ON(__if_send_command(iface, cmds + visca_nr_cmd_dzoom_mode, 
+				 BROADCAST_ADDR, false, NULL));
+}
 
 int visca_open_if(struct visca_interface *iface, char *devfile)
 {
+	int error = 0;
 	int fd;
 	struct termios options;
 
@@ -816,14 +804,16 @@ int visca_open_if(struct visca_interface *iface, char *devfile)
 	mutex_lock(&iface->lock);
 
 	if (iface->opened) {
+		error = VISCA_ERR;
 		pr_warn("interface already opened\n");
-		goto fail;
+		goto unlock;
 	}
 
 	fd = open(devfile, O_RDWR | O_NDELAY | O_NOCTTY);
 	if (fd < 0) {
+		error = VISCA_ERR;
 		pr_warn("cannot open serial device %s\n", devfile);
-		goto fail;
+		goto unlock;
 	}
 
 	LCALL(flock(fd, LOCK_EX | LOCK_NB));
@@ -833,14 +823,16 @@ int visca_open_if(struct visca_interface *iface, char *devfile)
 	cfmakeraw(&options);
 	LCALL(tcsetattr(fd, TCSANOW, &options));
 	
+	/* set dzoom mode off */
 	iface->fd = fd;
+	
+	send_init_command(iface);
+
 	iface->opened = 1;
 
+unlock:
 	mutex_unlock(&iface->lock);
-	return 0;
-fail:
-	mutex_unlock(&iface->lock);
-	return VISCA_ERR;
+	return error;
 }
 
 
