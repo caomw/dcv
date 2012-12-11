@@ -521,10 +521,10 @@ static int recv_packet(int fd, byte_t *buf, int *count)
 	int pos = 0;
 	int bytes_read;
 	
-	SYS_BUG(usleep(SERIAL_DELAY));
+	LCALL(usleep(SERIAL_DELAY));
 
 	for(;;) {
-		RW_SYS_BUG1(bytes_read, read(fd, buf + pos, 1), EPERM);
+		RWCALL1(bytes_read, read(fd, buf + pos, 1), EPERM);
 		if (bytes_read > 0) {
 			if (buf[pos] == TERMINATOR)
 				break;
@@ -535,7 +535,7 @@ static int recv_packet(int fd, byte_t *buf, int *count)
 				return VISCA_ERR;
 			}
 		}
-		SYS_BUG(usleep(RECV_POLL_WAIT));
+		LCALL(usleep(RECV_POLL_WAIT));
 	}
 	*count = pos + 1;
 
@@ -560,13 +560,13 @@ static int recv_packet(int fd, byte_t *buf, int *count)
 static int send_packet(int fd, const byte_t *buf, int count) {
 	int ret;
 	
-	RW_SYS_BUG(ret, write(fd, buf, count));
+	RWCALL(ret, write(fd, buf, count));
 	if (ret < count) {
 		pr_warn("write packet to fd %d failed\n", fd);
 		return VISCA_ERR;		
 	}
 
-	SYS_BUG(usleep(SERIAL_DELAY));
+	LCALL(usleep(SERIAL_DELAY));
 	return 0;
 }
 
@@ -677,7 +677,7 @@ static inline int if_trylock(struct visca_interface *iface)
 {
 	int error;
 
-	SYS_BUG1(error, pthread_mutex_trylock(&iface->lock), EBUSY);
+	LCALL1(error, pthread_mutex_trylock(&iface->lock), EBUSY);
 	if (error == -EBUSY) {
 		pr_warn("inteface already locked\n");
 		return VISCA_ERR;
@@ -686,7 +686,7 @@ static inline int if_trylock(struct visca_interface *iface)
 }
 
 static inline void if_unlock(struct visca_interface *iface) {
-	SYS_BUG(pthread_mutex_unlock(&iface->lock));
+	LCALL(pthread_mutex_unlock(&iface->lock));
 }
 
 int visca_close_serial(struct visca_interface *iface)
@@ -702,8 +702,8 @@ int visca_close_serial(struct visca_interface *iface)
 		goto unlock;
 	}
 
-	SYS_BUG(flock(iface->fd, LOCK_UN));
-	SYS_BUG(close(iface->fd));
+	LCALL(flock(iface->fd, LOCK_UN));
+	LCALL(close(iface->fd));
 
 	iface->fd = -1;
 	iface->opened = 0;
@@ -735,12 +735,12 @@ int visca_open_serial(struct visca_interface *iface, char *devfile)
 		goto unlock;
 	}
 	
-	SYS_BUG(flock(fd, LOCK_EX | LOCK_NB));
+	LCALL(flock(fd, LOCK_EX | LOCK_NB));
 
-	SYS_BUG(tcgetattr(fd, &options));
-	SYS_BUG(cfsetispeed(&options,B9600));
+	LCALL(tcgetattr(fd, &options));
+	LCALL(cfsetispeed(&options,B9600));
 	cfmakeraw(&options);
-	SYS_BUG(tcsetattr(fd, TCSANOW, &options));
+	LCALL(tcsetattr(fd, TCSANOW, &options));
 	
 	iface->fd = fd;
 	iface->opened = 1;
@@ -789,7 +789,7 @@ int __visca_command(struct visca_interface *iface, int cmd_idx,
 		 * for current baud rate (9600) 
 		 * we apply 180ms here
 		 */
-		SYS_BUG(usleep(180000));
+		LCALL(usleep(180000));
 	}
 
 unlock:

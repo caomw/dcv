@@ -38,7 +38,7 @@ typedef int  		bool;
 
 #define VISCA_ERR	-1
 #define EXIT_BUG	-2
-#define EXIT_SYSBUG	-3
+#define EXIT_LCALL	-3
 
 #define BUG() do {							    \
 	__pr("BUG failure at %s:%d/%s()!\n", __FILE__, __LINE__, __func__); \
@@ -47,32 +47,33 @@ typedef int  		bool;
 
 #define BUG_ON(cond) do { if(unlikely(cond)) BUG(); } while(0)
 
-#define __SYS_BUG(call) do {				\
-	err(EXIT_SYSBUG, "syscall " #call		\
+/* lib function call */
+#define __LCALL(call) do {				\
+	err(EXIT_LCALL, "libcall " #call		\
 		"BUG failure at %s:%d/%s()!\n",		\
 		__FILE__, __LINE__, __func__);	\
 } while(0)
 
-#define SYS_BUG(call) do {				\
+#define LCALL(call) do {				\
 	if(unlikely((call)))				\
-		__SYS_BUG(call);			\
+		__LCALL(call);			\
 } while(0)
 
-#define __SYS_BUG_RET(ret, call, cond) ({	\
+#define __LCALL_RET(ret, call, cond) ({	\
 	ret = (call);			\
 	if (unlikely(cond)) \
-		__SYS_BUG(call); \
+		__LCALL(call); \
 	ret; \
 })
 
-#define SYS_BUG1(ret, call, errcode1) \
-	__SYS_BUG_RET(ret, call, ret && ret != -(errcode1))
+#define LCALL1(ret, call, errcode1) \
+	__LCALL_RET(ret, call, ret && ret != -(errcode1))
 
-#define RW_SYS_BUG(ret, call)			\
-	__SYS_BUG_RET(ret, call, ret < 0)
+#define RWCALL(ret, call)			\
+	__LCALL_RET(ret, call, ret < 0)
 
-#define RW_SYS_BUG1(ret, call, errcode1)		\
-	__SYS_BUG_RET(ret, call, ret < 0 && ret != -(errcode1))
+#define RWCALL1(ret, call, errcode1)		\
+	__LCALL_RET(ret, call, ret < 0 && ret != -(errcode1))
 
 #ifndef VISCA_IMAGE_FILP
 #define VISCA_IMAGE_FILP 0
