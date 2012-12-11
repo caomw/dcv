@@ -191,20 +191,23 @@ struct visca_interface {
 	pthread_mutex_t lock; /* protect the whole structure */
 	int opened;
 	int fd;
-
 	byte_t send_buf[VISCA_IF_BUF_SIZE];
 	int send_pos;
 	byte_t recv_buf[VISCA_IF_BUF_SIZE];
 	int recv_pos;
 };
-
 #define VISCA_IF_INIT { \
 	.lock = PTHREAD_MUTEX_INITIALIZER, \
-	.opened = 0, \
+	.opened = 0,	   \
 }
-
-int visca_open_serial(struct visca_interface *iface, char *dev_name);
-int visca_close_serial(struct visca_interface *iface);
+struct visca_interface *visca_alloc_init_if();
+int visca_if_opened(struct visca_interface *iface)
+{
+	return iface->opened;
+}
+int visca_open_if(struct visca_interface *iface, char *dev_name);
+int visca_close_if(struct visca_interface *iface);
+void visca_free_if(struct visca_interface **iface);
 
 /* Unless you know what you do to use the function directly 
  * It doesnt have argument check
