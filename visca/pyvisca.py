@@ -5,7 +5,7 @@ from ctypes import (CDLL,
                     POINTER, 
                     byref)
 
-_lib = CDLL("./libdvisca.so")
+_lib = CDLL("../visca/libdvisca.so")
 
 class visca_interface(Structure):
     pass
@@ -70,9 +70,12 @@ PT_UPRIGHT = 0x0201
 PT_DOWNLEFT = 0x0102
 PT_DOWNRIGHT = 0x0202
 
+class ViscaErr(Exception):
+    pass
+
 def check(x):
     if x == VISCA_ERR:
-        raise "VISCA_ERR"
+        raise ViscaErr
 
 class ViscaInterface:
     def __init__(self):
@@ -88,7 +91,7 @@ class ViscaInterface:
         # '_lib' longer time
         self.pif = _lib.visca_alloc_init_if()
         if not self.pif:
-            raise "NULL Pointer"
+            raise
         check(_lib.visca_open_if(self.pif, dev_name))
         self.opened = True
 
@@ -145,7 +148,7 @@ if __name__ == "__main__":
     iface = ViscaInterface()
     iface.open("/dev/ttyS0")
     
-    iface.zoom_direct(2000)
+    iface.zoom_direct(200)
     print iface.inq_zoom_pos()
 
     iface.pantilt_absolute_pos(20,20,100,100)

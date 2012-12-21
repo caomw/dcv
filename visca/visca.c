@@ -1,5 +1,4 @@
 #include <unistd.h>
-#include <stdio.h>
 #include <termios.h>
 #include <fcntl.h>
 #include <errno.h>
@@ -631,18 +630,6 @@ static int fill_const_packet(const byte_t *data, int data_count,
 	*count = data_count + 1;
 	return 0;
 }
-
-/* static inline int if_trylock(struct visca_interface *iface)  */
-/* { */
-/* 	int error; */
-
-/* 	LCALL1(error, pthread_mutex_trylock(&iface->lock), EBUSY); */
-/* 	if (error == -EBUSY) { */
-/* 		pr_warn("inteface already locked\n"); */
-/* 		return VISCA_ERR; */
-/* 	} */
-/* 	return 0; */
-/* } */
 
 static int __if_send_command(struct visca_interface *iface, 
 			     struct command *cmd,
